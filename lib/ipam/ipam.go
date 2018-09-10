@@ -78,7 +78,7 @@ func (c ipamClient) AutoAssign(ctx context.Context, args AutoAssignArgs) ([]net.
 				return nil, nil, fmt.Errorf("provided IPv4 IPPools list contains one or more IPv6 IPPools")
 			}
 		}
-		v4list, err = c.autoAssign(ctx, args.Num4, args.HandleID, args.Attrs, args.IPv4Pools, ipv4, hostname)
+		v4list, err = c.autoAssign(ctx, args.Num4, args.HandleID, args.Attrs, args.IPv4Pools, args.ReservedIPs, ipv4, hostname)
 		if err != nil {
 			log.Errorf("Error assigning IPV4 addresses: %v", err)
 			return nil, nil, err
@@ -93,7 +93,7 @@ func (c ipamClient) AutoAssign(ctx context.Context, args AutoAssignArgs) ([]net.
 				return nil, nil, fmt.Errorf("provided IPv6 IPPools list contains one or more IPv4 IPPools")
 			}
 		}
-		v6list, err = c.autoAssign(ctx, args.Num6, args.HandleID, args.Attrs, args.IPv6Pools, ipv6, hostname)
+		v6list, err = c.autoAssign(ctx, args.Num6, args.HandleID, args.Attrs, args.IPv6Pools, args.ReservedIPs, ipv6, hostname)
 		if err != nil {
 			log.Errorf("Error assigning IPV6 addresses: %v", err)
 			return nil, nil, err
@@ -228,7 +228,7 @@ func (c ipamClient) determinePools(requestedPools []net.IPNet, version ipVersion
 	return enabledPools, nil
 }
 
-func (c ipamClient) autoAssign(ctx context.Context, num int, handleID *string, attrs map[string]string, requestedPools []net.IPNet, version ipVersion, host string) ([]net.IP, error) {
+func (c ipamClient) autoAssign(ctx context.Context, num int, handleID *string, attrs map[string]string, requestedPools []net.IPNet, reservedIPs []net.IP, version ipVersion, host string) ([]net.IP, error) {
 	// Start by sanitizing the requestedPools.
 	pools, err := c.determinePools(requestedPools, version)
 	if err != nil {
@@ -288,7 +288,7 @@ func (c ipamClient) autoAssign(ctx context.Context, num int, handleID *string, a
 			}
 
 			// Assign IPs from the block.
-			newIPs, err = c.assignFromExistingBlock(ctx, b, num, handleID, attrs, host, true)
+			newIPs, err = c.assignFromExistingBlock(ctx, b, num, handleID, attrs, reservedIPs, host, true)
 			if err != nil {
 				if _, ok := err.(cerrors.ErrorResourceUpdateConflict); ok {
 					logCtx.WithError(err).Debug("CAS error assigning from affine block - retry")
@@ -366,7 +366,7 @@ func (c ipamClient) autoAssign(ctx context.Context, num int, handleID *string, a
 
 				// Claim successful.  Assign addresses from the new block.
 				logCtx.Infof("Claimed new block %v - assigning %d addresses", b, rem)
-				newIPs, err := c.assignFromExistingBlock(ctx, b, rem, handleID, attrs, host, config.StrictAffinity)
+				newIPs, err := c.assignFromExistingBlock(ctx, b, rem, handleID, attrs, reservedIPs, host, config.StrictAffinity)
 				if err != nil {
 					if _, ok := err.(cerrors.ErrorResourceUpdateConflict); ok {
 						log.WithError(err).Debug("CAS Error assigning from new block - retry")
@@ -437,7 +437,7 @@ func (c ipamClient) autoAssign(ctx context.Context, num int, handleID *string, a
 
 					// Attempt to assign from the block.
 					logCtx.Infof("Attempting to assign IPs from non-affine block %s", blockCIDR.String())
-					newIPs, err := c.assignFromExistingBlock(ctx, b, rem, handleID, attrs, host, false)
+					newIPs, err := c.assignFromExistingBlock(ctx, b, rem, handleID, attrs, reservedIPs, host, false)
 					if err != nil {
 						if _, ok := err.(cerrors.ErrorResourceUpdateConflict); ok {
 							logCtx.WithError(err).Debug("CAS error assigning from non-affine block - retry")
@@ -659,7 +659,7 @@ func (c ipamClient) releaseIPsFromBlock(ctx context.Context, ips []net.IP, block
 	return nil, errors.New("Max retries hit - excessive concurrent IPAM requests")
 }
 
-func (c ipamClient) assignFromExistingBlock(ctx context.Context, block *model.KVPair, num int, handleID *string, attrs map[string]string, host string, affCheck bool) ([]net.IP, error) {
+func (c ipamClient) assignFromExistingBlock(ctx context.Context, block *model.KVPair, num int, handleID *string, attrs map[string]string, reservedIPs []net.IP, host string, affCheck bool) ([]net.IP, error) {
 	blockCIDR := block.Key.(model.BlockKey).CIDR
 	logCtx := log.WithFields(log.Fields{"host": host, "block": blockCIDR})
 	if handleID != nil {
@@ -670,7 +670,7 @@ func (c ipamClient) assignFromExistingBlock(ctx context.Context, block *model.KV
 	// Pull out the block.
 	b := allocationBlock{block.Value.(*model.AllocationBlock)}
 
-	ips, err := b.autoAssign(num, handleID, host, attrs, affCheck)
+	ips, err := b.autoAssign(num, handleID, host, attrs, reservedIPs, affCheck)
 	if err != nil {
 		logCtx.WithError(err).Errorf("Error in auto assign")
 		return nil, err

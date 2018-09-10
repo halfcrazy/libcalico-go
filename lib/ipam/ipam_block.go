@@ -74,7 +74,7 @@ func newBlock(cidr cnet.IPNet) allocationBlock {
 }
 
 func (b *allocationBlock) autoAssign(
-	num int, handleID *string, host string, attrs map[string]string, affinityCheck bool) ([]cnet.IP, error) {
+	num int, handleID *string, host string, attrs map[string]string, reservedIPs []cnet.IP, affinityCheck bool) ([]cnet.IP, error) {
 
 	// Determine if we need to check for affinity.
 	checkAffinity := b.StrictAffinity || affinityCheck
@@ -90,11 +90,31 @@ func (b *allocationBlock) autoAssign(
 		}
 	}
 
+	// NOTE: 过滤掉保留的ip
+	// 分析见 http://confluence.alaudatech.com/pages/viewpage.action?pageId=27168412#Calicoipamwithk8s%E9%80%BB%E8%BE%91%E6%95%B4%E7%90%86-calicoblock%E5%9D%97%E7%BB%93%E6%9E%84%E5%88%86%E6%9E%90
+	// Allocations 是个数组
+	// Unallocated 是个队列
 	// Walk the allocations until we find enough addresses.
 	ordinals := []int{}
-	for len(b.Unallocated) > 0 && len(ordinals) < num {
-		ordinals = append(ordinals, b.Unallocated[0])
-		b.Unallocated = b.Unallocated[1:]
+	skipped := 0
+	for len(b.Unallocated)-skipped > 0 && len(ordinals) < num {
+		isReservedIP := false
+		for _, reservedIP := range reservedIPs {
+			currentIP := incrementIP(cnet.IP{b.CIDR.IP}, big.NewInt(int64(b.Unallocated[0])))
+			if currentIP.IP.Equal(reservedIP.IP) {
+				isReservedIP = true
+				skipped++
+				break
+			}
+		}
+		if !isReservedIP {
+			// 非保留ip，可以使用的话
+			ordinals = append(ordinals, b.Unallocated[0])
+			b.Unallocated = b.Unallocated[1:]
+		} else {
+			// 保留ip的情况，将保留的移到队尾
+			b.Unallocated = append(b.Unallocated[1:], b.Unallocated[0])
+		}
 	}
 
 	// Create slice of IPs and perform the allocations.
