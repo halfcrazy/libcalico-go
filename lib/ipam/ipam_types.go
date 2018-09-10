@@ -64,6 +64,9 @@ type AutoAssignArgs struct {
 	// If specified, the previously configured IPv6 pools from which
 	// to assign IPv6 addresses.  If not specified, this defaults to all IPv6 pools.
 	IPv6Pools []cnet.IPNet
+
+	// For internal use, avoid alloc required ips for unspecific ip pods
+	ReservedIPs []cnet.IP
 }
 
 // IPAMConfig contains global configuration options for Calico IPAM.
