@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	blockSize = 64
+	blockSize = 16
 )
 
 type ipVersion struct {
@@ -41,15 +41,15 @@ type ipVersion struct {
 var ipv4 ipVersion = ipVersion{
 	Number:            4,
 	TotalBits:         32,
-	BlockPrefixLength: 26,
-	BlockPrefixMask:   net.CIDRMask(26, 32),
+	BlockPrefixLength: 28,
+	BlockPrefixMask:   net.CIDRMask(28, 32),
 }
 
 var ipv6 ipVersion = ipVersion{
 	Number:            6,
 	TotalBits:         128,
-	BlockPrefixLength: 122,
-	BlockPrefixMask:   net.CIDRMask(122, 128),
+	BlockPrefixLength: 124,
+	BlockPrefixMask:   net.CIDRMask(124, 128),
 }
 
 // Wrap the backend AllocationBlock struct so that we can
