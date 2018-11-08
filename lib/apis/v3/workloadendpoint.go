@@ -72,6 +72,9 @@ type WorkloadEndpointSpec struct {
 	MAC string `json:"mac,omitempty" validate:"omitempty,mac"`
 	// Ports contains the endpoint's named ports, which may be referenced in security policy rules.
 	Ports []EndpointPort `json:"ports,omitempty" validate:"dive,omitempty"`
+
+	// ControlledBy store the wep belonged top controller
+	ControlledBy string `json:"controlledBy,omitempty"`
 }
 
 // IPNat contains a single NAT mapping for a WorkloadEndpoint resource.

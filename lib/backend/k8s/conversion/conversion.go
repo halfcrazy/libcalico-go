@@ -32,8 +32,10 @@ import (
 	"github.com/projectcalico/libcalico-go/lib/names"
 	cnet "github.com/projectcalico/libcalico-go/lib/net"
 	"github.com/projectcalico/libcalico-go/lib/numorstring"
+	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/kubernetes"
 )
 
 var (
@@ -48,7 +50,9 @@ const (
 )
 
 //TODO: make this private and expose a public conversion interface instead
-type Converter struct{}
+type Converter struct {
+	ClientSet *kubernetes.Clientset
+}
 
 // VethNameForWorkload returns a deterministic veth name
 // for the given Kubernetes workload (WEP) name and namespace.
@@ -290,7 +294,7 @@ func (c Converter) PodToWorkloadEndpoint(pod *kapiv1.Pod) (*model.KVPair, error)
 			}
 		}
 	}
-
+	controlledBy := getPodControlledBy(c.ClientSet, pod)
 	// Create the workload endpoint.
 	wep := apiv3.NewWorkloadEndpoint()
 	wep.ObjectMeta = metav1.ObjectMeta{
@@ -311,6 +315,7 @@ func (c Converter) PodToWorkloadEndpoint(pod *kapiv1.Pod) (*model.KVPair, error)
 		IPNetworks:    ipNets,
 		Ports:         endpointPorts,
 		IPNATs:        floatingIPs,
+		ControlledBy:  controlledBy,
 	}
 
 	// Embed the workload endpoint into a KVPair.
@@ -754,4 +759,23 @@ func (c Converter) SplitProfileRevision(rev string) (nsRev string, saRev string,
 	nsRev = revs[0]
 	saRev = revs[1]
 	return
+}
+
+func getPodControlledBy(client *kubernetes.Clientset, pod *corev1.Pod) string {
+	ownerRefs := pod.GetOwnerReferences()
+	if ownerRefs != nil && len(ownerRefs) > 0 {
+		if ownerRefs[0].Kind == "ReplicaSet" {
+			rs, err := client.AppsV1().ReplicaSets(pod.Namespace).Get(ownerRefs[0].Name, metav1.GetOptions{})
+			if err != nil {
+				log.Infof("get rs failed %+v", err)
+				return ""
+			}
+			rsOwnerRefs := rs.GetOwnerReferences()
+			if rsOwnerRefs != nil && len(rsOwnerRefs) > 0 {
+				return rsOwnerRefs[0].Kind + "/" + rsOwnerRefs[0].Name
+			}
+		}
+		return ownerRefs[0].Kind + "/" + ownerRefs[0].Name
+	}
+	return ""
 }
