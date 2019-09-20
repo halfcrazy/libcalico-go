@@ -70,6 +70,9 @@ type AutoAssignArgs struct {
 	// If non-zero, limit on the number of affine blocks this host is allowed to claim
 	// (per IP version).
 	MaxBlocksPerHost int
+
+	// For internal use, avoid alloc required ips for unspecific ip pods
+	ReservedIPs []cnet.IP
 }
 
 // IPAMConfig contains global configuration options for Calico IPAM.

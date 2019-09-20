@@ -58,7 +58,7 @@ func newBlock(cidr cnet.IPNet) allocationBlock {
 }
 
 func (b *allocationBlock) autoAssign(
-	num int, handleID *string, host string, attrs map[string]string, affinityCheck bool) ([]cnet.IPNet, error) {
+	num int, handleID *string, host string, attrs map[string]string, reservedIPs []cnet.IP, affinityCheck bool) ([]cnet.IPNet, error) {
 
 	// Determine if we need to check for affinity.
 	checkAffinity := b.StrictAffinity || affinityCheck
@@ -76,9 +76,23 @@ func (b *allocationBlock) autoAssign(
 
 	// Walk the allocations until we find enough addresses.
 	ordinals := []int{}
-	for len(b.Unallocated) > 0 && len(ordinals) < num {
-		ordinals = append(ordinals, b.Unallocated[0])
-		b.Unallocated = b.Unallocated[1:]
+	skipped := 0
+	for len(b.Unallocated)-skipped > 0 && len(ordinals) < num {
+		isReservedIP := false
+		for _, reservedIP := range reservedIPs {
+			currentIP := cnet.IncrementIP(cnet.IP{b.CIDR.IP}, big.NewInt(int64(b.Unallocated[0])))
+			if currentIP.IP.Equal(reservedIP.IP) {
+				isReservedIP = true
+				skipped++
+				break
+			}
+		}
+		if !isReservedIP {
+			ordinals = append(ordinals, b.Unallocated[0])
+			b.Unallocated = b.Unallocated[1:]
+		} else {
+			b.Unallocated = append(b.Unallocated[1:], b.Unallocated[0])
+		}
 	}
 
 	// Create slice of IPs and perform the allocations.
